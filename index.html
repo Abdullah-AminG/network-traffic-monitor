@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetShield Analytics — Network Traffic Monitor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #050b14; --bg2: #080f1c; --panel: #0a1628; --panel2: #0d1e35;
+            --border: #1a3050; --accent: #00d4ff; --accent2: #0af5a0; --icmp: #ff6b35;
+            --warn: #ffcc00; --tcp: #00d4ff; --udp: #0af5a0; --http: #a855f7;
+            --text: #e2eaf5; --text2: #6b8ab0;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+        body::before {
+            content: ''; position: fixed; inset: 0;
+            background-image: linear-gradient(rgba(0,212,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(0,212,255,0.025) 1px, transparent 1px);
+            background-size: 40px 40px; pointer-events: none; z-index: 0;
+        }
+
+        /* LOGIN */
+        #login-overlay {
+            position: fixed; inset: 0; background: rgba(5,11,20,0.97);
+            z-index: 1000; display: flex; align-items: center; justify-content: center;
+        }
+        .login-box {
+            background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+            padding: 48px 40px; width: 420px; position: relative;
+            box-shadow: 0 0 60px rgba(0,212,255,0.1);
+        }
+        .login-box::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            border-radius: 16px 16px 0 0;
+        }
+        .login-logo { text-align: center; margin-bottom: 32px; }
+        .login-logo .icon {
+            width: 56px; height: 56px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border-radius: 14px; display: inline-flex; align-items: center; justify-content: center;
+            font-size: 24px; margin-bottom: 16px; box-shadow: 0 0 30px rgba(0,212,255,0.4);
+        }
+        .login-logo h2 { font-size: 22px; font-weight: 800; letter-spacing: 2px; }
+        .login-logo p { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--text2); margin-top: 4px; letter-spacing: 1px; }
+        .login-field { margin-bottom: 16px; }
+        .login-field label { display: block; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text2); margin-bottom: 8px; }
+        .login-field input {
+            width: 100%; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+            padding: 12px 16px; font-family: 'Space Mono', monospace; font-size: 14px; color: var(--text); outline: none; transition: border-color 0.2s;
+        }
+        .login-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,212,255,0.1); }
+        .login-btn {
+            width: 100%; background: linear-gradient(135deg, var(--accent), #0099cc); border: none; border-radius: 8px;
+            padding: 14px; font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
+            letter-spacing: 2px; text-transform: uppercase; color: var(--bg); cursor: pointer; margin-top: 8px; transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .login-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,212,255,0.35); }
+        .login-error {
+            background: rgba(255,107,53,0.1); border: 1px solid rgba(255,107,53,0.3); border-radius: 8px;
+            padding: 10px 14px; font-size: 13px; color: var(--icmp); margin-top: 12px; display: none; text-align: center;
+        }
+
+        /* APP */
+        #app { display: none; position: relative; z-index: 1; }
+
+        /* TOPBAR */
+        .topbar {
+            background: var(--panel); border-bottom: 1px solid var(--border);
+            padding: 0 24px; height: 60px; display: flex; align-items: center; justify-content: space-between;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 16px; }
+        .logo { display: flex; align-items: center; gap: 10px; }
+        .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; box-shadow: 0 0 16px rgba(0,212,255,0.4); }
+        .logo-text { font-size: 16px; font-weight: 800; letter-spacing: 2px; }
+        .logo-text span { color: var(--accent); }
+        .divider { width: 1px; height: 24px; background: var(--border); }
+        .status-badge { display: flex; align-items: center; gap: 8px; font-family: 'Space Mono', monospace; font-size: 12px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text2); transition: background 0.3s; }
+        .status-dot.active { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+        .topbar-right { display: flex; align-items: center; gap: 12px; }
+        .user-badge { display: flex; align-items: center; gap: 8px; background: var(--bg2); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px 6px 8px; font-size: 12px; }
+        .user-avatar { width: 24px; height: 24px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--bg); }
+        .logout-btn { background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-family: 'Space Mono', monospace; font-size: 11px; color: var(--text2); cursor: pointer; transition: all 0.2s; }
+        .logout-btn:hover { border-color: var(--icmp); color: var(--icmp); }
+
+        /* MAIN */
+        .main { padding: 24px; max-width: 1500px; margin: 0 auto; }
+
+        /* CONTROL */
+        .control-row { display: flex; gap: 12px; margin-bottom: 22px; align-items: center; flex-wrap: wrap; }
+        .btn { display: flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 8px; border: none; font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 1px; cursor: pointer; transition: all 0.2s; text-transform: uppercase; }
+        .btn-start { background: linear-gradient(135deg, #00aa44, var(--accent2)); color: var(--bg); }
+        .btn-start:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(10,245,160,0.4); }
+        .btn-stop { background: linear-gradient(135deg, #cc3300, var(--icmp)); color: white; }
+        .btn-stop:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(255,107,53,0.4); }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text2); }
+        .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+        .btn-blue { background: linear-gradient(135deg, #0066cc, var(--accent)); color: white; }
+        .btn-blue:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,212,255,0.3); }
+
+        /* STATS */
+        .stats-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 22px; }
+        .stat-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; position: relative; overflow: hidden; transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-2px); }
+        .stat-card::after { content:''; position:absolute; bottom:0;left:0;right:0; height:3px; border-radius:0 0 12px 12px; }
+        .stat-card.total::after { background: var(--accent); }
+        .stat-card.tcp::after { background: var(--tcp); }
+        .stat-card.udp::after { background: var(--udp); }
+        .stat-card.icmp::after { background: var(--icmp); }
+        .stat-card.http::after { background: var(--http); }
+        .stat-card.avg::after { background: #3b82f6; }
+        .stat-label { font-size: 10px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--text2); margin-bottom: 8px; }
+        .stat-value { font-family: 'Space Mono', monospace; font-size: 26px; font-weight: 700; transition: transform 0.2s; display: inline-block; }
+        .stat-card.total .stat-value { color: var(--accent); }
+        .stat-card.tcp .stat-value { color: var(--tcp); }
+        .stat-card.udp .stat-value { color: var(--udp); }
+        .stat-card.icmp .stat-value { color: var(--icmp); }
+        .stat-card.http .stat-value { color: var(--http); }
+        .stat-card.avg .stat-value { color: #3b82f6; }
+
+        /* CHARTS */
+        .charts-row { display: grid; grid-template-columns: 200px 1fr 1fr; gap: 18px; margin-bottom: 22px; }
+        .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+        .panel-header { padding: 13px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--panel2); }
+        .panel-title { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--text2); display: flex; align-items: center; gap: 8px; }
+        .panel-title .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+        .panel-body { padding: 16px; }
+        .chart-wrap { position: relative; width: 100%; height: 150px; }
+
+        /* FILTER */
+        .filter-section { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 22px; }
+        .filter-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+        .filter-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 130px; }
+        .filter-group label { font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text2); }
+        .filter-group input, .filter-group select { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; font-family: 'Space Mono', monospace; font-size: 13px; color: var(--text); outline: none; transition: border-color 0.2s; }
+        .filter-group input:focus, .filter-group select:focus { border-color: var(--accent); }
+        .filter-group select option { background: var(--panel); }
+
+        /* TABLE */
+        .bottom-grid { display: grid; grid-template-columns: 1fr 290px; gap: 18px; margin-bottom: 22px; }
+        .table-wrapper { overflow: auto; max-height: calc(100vh - 480px); min-height: 200px; transition: max-height 0.3s ease; }
+        table { width: 100%; border-collapse: collapse; }
+        thead { position: sticky; top: 0; z-index: 10; }
+        th { background: var(--panel2); padding: 10px 14px; text-align: left; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+        td { padding: 9px 14px; border-bottom: 1px solid rgba(26,48,80,0.5); font-family: 'Space Mono', monospace; font-size: 11px; white-space: nowrap; }
+        tbody tr { transition: background 0.15s; animation: rowIn 0.25s ease; }
+        @keyframes rowIn { from{opacity:0;transform:translateX(-6px)} to{opacity:1;transform:translateX(0)} }
+        tbody tr:hover { background: rgba(0,212,255,0.04); }
+        .proto-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; letter-spacing:1px; }
+        .proto-TCP { background:rgba(0,212,255,0.15); color:var(--tcp); }
+        .proto-UDP { background:rgba(10,245,160,0.15); color:var(--udp); }
+        .proto-ICMP { background:rgba(255,107,53,0.15); color:var(--icmp); }
+        .proto-HTTP { background:rgba(168,85,247,0.15); color:var(--http); }
+        .service-badge { display:inline-block; padding:2px 8px; border-radius:4px; background:rgba(59,130,246,0.15); color:#93c5fd; font-size:10px; font-weight:700; }
+        .empty-state { padding:50px 20px; text-align:center; color:var(--text2); }
+        .empty-state .icon { font-size:32px; margin-bottom:10px; opacity:0.4; }
+        .empty-state p { font-size:13px; }
+        .count-badge { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:3px 10px; font-family:'Space Mono',monospace; font-size:11px; color:var(--accent); }
+        .ip-highlight { background: rgba(0,212,255,0.18) !important; color: var(--accent) !important; border-radius: 4px; padding: 1px 5px; cursor: pointer; transition: background 0.2s; }
+        .ip-highlight:hover { background: rgba(0,212,255,0.32) !important; }
+        .ip-cell { cursor: pointer; }
+        .ip-cell:hover { color: var(--accent); }
+        .ip-selected { color: var(--accent) !important; font-weight: 700; }
+        tbody tr.row-highlighted { background: rgba(0,212,255,0.07) !important; border-left: 2px solid var(--accent); }
+        .btn-export { background: linear-gradient(135deg, #1a5c38, var(--accent2)); color: var(--bg); }
+        .btn-export:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(10,245,160,0.35); }
+
+        /* LOG */
+        .log-body { padding:14px; height:250px; overflow-y:auto; font-family:'Space Mono',monospace; font-size:11px; line-height:1.8; }
+        .log-entry { display:flex; gap:10px; padding:2px 0; border-bottom:1px solid rgba(26,48,80,0.3); animation:fadeIn 0.3s ease; }
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+        .log-time { color:var(--text2); min-width:68px; }
+        .log-msg { color:var(--accent2); }
+        .log-msg.warn { color:var(--warn); }
+        .log-msg.stop { color:var(--icmp); }
+        .log-msg.info { color:var(--accent); }
+
+        ::-webkit-scrollbar { width:5px; height:5px; }
+        ::-webkit-scrollbar-track { background:var(--bg); }
+        ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+        ::-webkit-scrollbar-thumb:hover { background:var(--accent); }
+
+        .scan-line { position:fixed; top:0; left:0; width:100%; height:2px; background:linear-gradient(90deg,transparent,var(--accent),transparent); pointer-events:none; z-index:999; opacity:0; }
+        .scan-line.active { animation:scan 4s linear infinite; opacity:1; }
+        @keyframes scan { 0%{top:0} 100%{top:100vh} }
+
+        .footer { text-align:center; padding:16px; color:var(--text2); font-family:'Space Mono',monospace; font-size:11px; border-top:1px solid var(--border); margin-top:8px; }
+        .footer span { color:var(--accent); }
+    </style>
+</head>
+<body>
+
+<div class="scan-line" id="scan-line"></div>
+
+<!-- LOGIN -->
+<div id="login-overlay">
+    <div class="login-box">
+        <div class="login-logo">
+            <div class="icon">🛡️</div>
+            <h2>NetShield Analytics</h2>
+            <p>NETWORK TRAFFIC MONITORING SYSTEM</p>
+        </div>
+        <div class="login-field">
+            <label>Username</label>
+            <input type="text" id="login-user" placeholder="Enter username" autocomplete="off">
+        </div>
+        <div class="login-field">
+            <label>Password</label>
+            <input type="password" id="login-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter') doLogin()">
+        </div>
+        <button class="login-btn" onclick="doLogin()">🔐 &nbsp; ACCESS SYSTEM</button>
+        <div class="login-error" id="login-error">⚠ Invalid credentials. Access denied.</div>
+    </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="logo">
+                <div class="logo-icon">🛡️</div>
+                <div class="logo-text">NET<span>SHIELD</span> ANALYTICS</div>
+            </div>
+            <div class="divider"></div>
+            <div class="status-badge">
+                <div class="status-dot" id="status-dot"></div>
+                <span id="status-text">IDLE</span>
+            </div>
+        </div>
+        <div class="topbar-right">
+            <div class="user-badge">
+                <div class="user-avatar" id="user-avatar">?</div>
+                <span id="user-name" style="font-family:'Space Mono',monospace;">—</span>
+            </div>
+            <button class="logout-btn" onclick="doLogout()">LOGOUT</button>
+        </div>
+    </div>
+
+    <div class="main">
+        <!-- CONTROLS -->
+        <div class="control-row">
+            <button class="btn btn-start" onclick="startMonitoring()">▶ Start Capture</button>
+            <button class="btn btn-stop" onclick="stopMonitoring()">⏹ Stop Capture</button>
+            <button class="btn btn-outline" onclick="clearData()">🗑 Clear Data</button>
+            <button class="btn btn-export" onclick="exportCSV()">⬇ Export CSV</button>
+        </div>
+
+        <!-- STATS -->
+        <div class="stats-grid">
+            <div class="stat-card total"><div class="stat-label">Total Packets</div><div class="stat-value" id="stat-total">0</div></div>
+            <div class="stat-card tcp"><div class="stat-label">TCP</div><div class="stat-value" id="stat-tcp">0</div></div>
+            <div class="stat-card udp"><div class="stat-label">UDP</div><div class="stat-value" id="stat-udp">0</div></div>
+            <div class="stat-card icmp"><div class="stat-label">ICMP</div><div class="stat-value" id="stat-icmp">0</div></div>
+            <div class="stat-card http"><div class="stat-label">HTTP / HTTPS</div><div class="stat-value" id="stat-http">0</div></div>
+            <div class="stat-card avg"><div class="stat-label">Avg Size (B)</div><div class="stat-value" id="stat-avg">0</div></div>
+        </div>
+
+        <!-- CHARTS -->
+        <div class="charts-row">
+            <!-- Donut -->
+            <div class="panel">
+                <div class="panel-header"><div class="panel-title"><div class="dot"></div> PROTOCOL SPLIT</div></div>
+                <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;gap:14px;">
+                    <div style="position:relative;width:130px;height:130px;">
+                        <canvas id="donutChart" role="img" aria-label="Protocol distribution donut chart"></canvas>
+                    </div>
+                    <div id="donut-legend" style="width:100%;display:flex;flex-direction:column;gap:8px;font-size:11px;font-family:'Space Mono',monospace;"></div>
+                </div>
+            </div>
+            <!-- Bar time -->
+            <div class="panel">
+                <div class="panel-header"><div class="panel-title"><div class="dot"></div> PACKETS OVER TIME</div></div>
+                <div class="panel-body">
+                    <div class="chart-wrap"><canvas id="timeChart" role="img" aria-label="Packets captured over time"></canvas></div>
+                </div>
+            </div>
+            <!-- Line size -->
+            <div class="panel">
+                <div class="panel-header"><div class="panel-title"><div class="dot"></div> AVG PACKET SIZE</div></div>
+                <div class="panel-body">
+                    <div class="chart-wrap"><canvas id="sizeChart" role="img" aria-label="Average packet size trend"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FILTER -->
+        <div class="filter-section">
+            <div class="panel-title" style="margin-bottom:14px;"><div class="dot"></div> FILTER OPTIONS</div>
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Protocol</label>
+                    <select id="filter-protocol">
+                        <option value="">All</option>
+                        <option value="TCP">TCP</option>
+                        <option value="UDP">UDP</option>
+                        <option value="ICMP">ICMP</option>
+                        <option value="HTTP">HTTP</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Source IP</label>
+                    <input type="text" id="filter-src" placeholder="e.g. 192.168.1.1">
+                </div>
+                <div class="filter-group">
+                    <label>Destination IP</label>
+                    <input type="text" id="filter-dst" placeholder="e.g. 8.8.8.8">
+                </div>
+                <div class="filter-group">
+                    <label>Service</label>
+                    <select id="filter-service">
+                        <option value="">All Services</option>
+                        <option value="HTTP">HTTP</option>
+                        <option value="HTTPS">HTTPS</option>
+                        <option value="DNS">DNS</option>
+                        <option value="SSH">SSH</option>
+                        <option value="FTP">FTP</option>
+                    </select>
+                </div>
+                <button class="btn btn-blue" onclick="applyFilter()">🔍 Apply</button>
+                <button class="btn btn-outline" onclick="resetFilter()">✖ Reset</button>
+            </div>
+        </div>
+
+        <!-- TABLE + LOG -->
+        <div class="bottom-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title"><div class="dot"></div> NETWORK PACKETS</div>
+                    <div class="count-badge" id="packet-count">0 packets</div>
+                </div>
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Time</th><th>Source IP</th><th>Dest IP</th><th>Protocol</th><th>Size</th><th>Src Port</th><th>Dst Port</th><th>Service</th></tr></thead>
+                        <tbody id="packets-body">
+                            <tr><td colspan="8"><div class="empty-state"><div class="icon">📡</div><p>Start monitoring to capture packets.</p></div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-header"><div class="panel-title"><div class="dot"></div> ACTIVITY LOG</div></div>
+                <div class="log-body" id="log-box"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        NetShield Analytics &nbsp;|&nbsp; <span>BCSF24A037</span> &nbsp;&amp;&nbsp; <span>BCSF24A049</span> &nbsp;|&nbsp; Network Traffic Monitoring System
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const USERS = { 'bcsf24a037': '1234', 'bcsf24a049': '1234' };
+const USER_NAMES = { 'bcsf24a037': 'ABDULLAH', 'bcsf24a049': 'AZAM' };
+let currentUser = null, allPackets = [], interval = null, isMonitoring = false;
+let timeLabels = [], timeCounts = [], sizeTrend = [];
+let donutChart, timeChart, sizeChart;
+const GRID = 'rgba(26,48,80,0.6)', TXT = '#6b8ab0';
+
+function initCharts() {
+    donutChart = new Chart(document.getElementById('donutChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['TCP','UDP','ICMP','HTTP'],
+            datasets: [{ data:[0,0,0,0], backgroundColor:['#00d4ff','#0af5a0','#ff6b35','#a855f7'], borderColor:'#0a1628', borderWidth:3, hoverOffset:6 }]
+        },
+        options: { responsive:true, maintainAspectRatio:true, cutout:'70%', plugins:{ legend:{display:false}, tooltip:{ backgroundColor:'#0d1e35', borderColor:'#1a3050', borderWidth:1, titleColor:'#e2eaf5', bodyColor:'#6b8ab0', padding:10 } } }
+    });
+
+    timeChart = new Chart(document.getElementById('timeChart'), {
+        type: 'bar',
+        data: { labels:[], datasets:[{ label:'Packets', data:[], backgroundColor:'rgba(0,212,255,0.25)', borderColor:'#00d4ff', borderWidth:1, borderRadius:3 }] },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ x:{ ticks:{color:TXT,font:{size:9}}, grid:{color:GRID} }, y:{ ticks:{color:TXT,font:{size:9}}, grid:{color:GRID}, beginAtZero:true } } }
+    });
+
+    sizeChart = new Chart(document.getElementById('sizeChart'), {
+        type: 'line',
+        data: { labels:[], datasets:[{ label:'Avg Bytes', data:[], borderColor:'#0af5a0', backgroundColor:'rgba(10,245,160,0.07)', borderWidth:2, tension:0.4, fill:true, pointRadius:3, pointBackgroundColor:'#0af5a0' }] },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ x:{ ticks:{color:TXT,font:{size:9}}, grid:{color:GRID} }, y:{ ticks:{color:TXT,font:{size:9}}, grid:{color:GRID}, beginAtZero:true } } }
+    });
+
+    renderLegend([0,0,0,0]);
+}
+
+function renderLegend(d) {
+    const cols = ['#00d4ff','#0af5a0','#ff6b35','#a855f7'];
+    const labs = ['TCP','UDP','ICMP','HTTP'];
+    document.getElementById('donut-legend').innerHTML = labs.map((l,i) => `
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span style="width:8px;height:8px;border-radius:2px;background:${cols[i]};flex-shrink:0;"></span>
+            <span style="color:#e2eaf5;">${l}</span>
+            <span style="color:#6b8ab0;margin-left:auto;">${d[i]}</span>
+        </div>`).join('');
+}
+
+function updateCharts(s) {
+    const d = [s.tcp||0, s.udp||0, s.icmp||0, s.http||0];
+    donutChart.data.datasets[0].data = d;
+    donutChart.update('none');
+    renderLegend(d);
+
+    const t = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+    timeLabels.push(t); timeCounts.push(s.total||0); sizeTrend.push(parseFloat(s.avg_size)||0);
+    if (timeLabels.length > 10) { timeLabels.shift(); timeCounts.shift(); sizeTrend.shift(); }
+    timeChart.data.labels = [...timeLabels];
+    timeChart.data.datasets[0].data = [...timeCounts];
+    timeChart.update('none');
+    sizeChart.data.labels = [...timeLabels];
+    sizeChart.data.datasets[0].data = [...sizeTrend];
+    sizeChart.update('none');
+}
+
+// LOGIN
+function doLogin() {
+    const u = document.getElementById('login-user').value.trim().toLowerCase();
+    const p = document.getElementById('login-pass').value;
+    const err = document.getElementById('login-error');
+    if (USERS[u] && USERS[u] === p) {
+        err.style.display = 'none';
+        currentUser = u;
+        const ov = document.getElementById('login-overlay');
+        ov.style.transition = 'opacity 0.4s';
+        ov.style.opacity = '0';
+        setTimeout(() => {
+            ov.style.display = 'none';
+            document.getElementById('app').style.display = 'block';
+            const displayName = USER_NAMES[u] || u.toUpperCase();
+            document.getElementById('user-name').textContent = displayName;
+            document.getElementById('user-avatar').textContent = displayName.substring(0,2).toUpperCase();
+            initCharts();
+            addLog('Access granted — welcome ' + displayName, 'info');
+            addLog('System ready', 'info');
+        }, 400);
+    } else {
+        err.style.display = 'block';
+        document.getElementById('login-pass').value = '';
+        document.getElementById('login-pass').focus();
+    }
+}
+
+function doLogout() {
+    stopMonitoring();
+    currentUser = null;
+    document.getElementById('login-user').value = '';
+    document.getElementById('login-pass').value = '';
+    document.getElementById('login-error').style.display = 'none';
+    document.getElementById('app').style.display = 'none';
+    const ov = document.getElementById('login-overlay');
+    ov.style.display = 'flex'; ov.style.opacity = '1';
+    if (donutChart) { donutChart.destroy(); timeChart.destroy(); sizeChart.destroy(); donutChart=timeChart=sizeChart=null; }
+    timeLabels=[]; timeCounts=[]; sizeTrend=[];
+}
+
+// MONITORING
+function startMonitoring() {
+    fetch('/start',{method:'POST'})
+    .then(() => {
+        isMonitoring = true;
+        document.getElementById('status-dot').classList.add('active');
+        document.getElementById('status-text').textContent = 'CAPTURING';
+        document.getElementById('scan-line').classList.add('active');
+        addLog('Capture started','info');
+        interval = setInterval(fetchData, 2000);
+    })
+    .catch(() => addLog('Flask server not running — start app.py as Administrator','warn'));
+}
+
+function stopMonitoring() {
+    fetch('/stop',{method:'POST'}).catch(()=>{});
+    isMonitoring = false; clearInterval(interval);
+    document.getElementById('status-dot').classList.remove('active');
+    document.getElementById('status-text').textContent = 'IDLE';
+    document.getElementById('scan-line').classList.remove('active');
+    addLog('Capture stopped','stop');
+}
+
+function clearData() {
+    allPackets=[]; timeLabels=[]; timeCounts=[]; sizeTrend=[];
+    renderTable([]);
+    ['stat-total','stat-tcp','stat-udp','stat-icmp','stat-http','stat-avg'].forEach(id => document.getElementById(id).textContent='0');
+    if(donutChart) updateCharts({tcp:0,udp:0,icmp:0,http:0,total:0,avg_size:0});
+    addLog('Data cleared','warn');
+}
+
+function fetchData() {
+    fetch('/packets').then(r=>r.json()).then(d=>{ allPackets=d; renderTableRespectingFilter(); });
+    fetch('/stats').then(r=>r.json()).then(s=>{
+        animateNum('stat-total',s.total||0);
+        animateNum('stat-tcp',s.tcp||0);
+        animateNum('stat-udp',s.udp||0);
+        animateNum('stat-icmp',s.icmp||0);
+        animateNum('stat-http',s.http||0);
+        document.getElementById('stat-avg').textContent = s.avg_size||0;
+        updateCharts(s);
+    });
+}
+
+function animateNum(id, val) {
+    const el = document.getElementById(id);
+    if (parseInt(el.textContent)===val) return;
+    el.style.transform='scale(1.15)';
+    el.textContent=val;
+    setTimeout(()=>el.style.transform='scale(1)',200);
+}
+
+let highlightedIP = null;
+// Active filters — only updated when user clicks Apply
+let activeFilters = { proto: '', src: '', dst: '', svc: '' };
+
+function renderTableRespectingFilter() {
+    // Use stored activeFilters, NOT current input values
+    let f = allPackets;
+    if(activeFilters.proto) f=f.filter(p=>p.protocol===activeFilters.proto||(activeFilters.proto==='HTTP'&&(p.service==='HTTP'||p.service==='HTTPS')));
+    if(activeFilters.src)   f=f.filter(p=>p.src_ip.includes(activeFilters.src));
+    if(activeFilters.dst)   f=f.filter(p=>p.dst_ip.includes(activeFilters.dst));
+    if(activeFilters.svc)   f=f.filter(p=>p.service===activeFilters.svc);
+    renderTable(f);
+}
+
+function renderTable(data) {
+    const tb = document.getElementById('packets-body');
+    document.getElementById('packet-count').textContent = data.length + ' packets';
+    if (!data.length) { tb.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="icon">📡</div><p>No packets to display.</p></div></td></tr>`; return; }
+    tb.innerHTML = data.slice().reverse().slice(0,200).map(p=>{
+        const srcClass = highlightedIP && p.src_ip === highlightedIP ? 'ip-selected' : '';
+        const dstClass = highlightedIP && p.dst_ip === highlightedIP ? 'ip-selected' : '';
+        const rowClass = highlightedIP && (p.src_ip === highlightedIP || p.dst_ip === highlightedIP) ? 'row-highlighted' : '';
+        return `<tr class="${rowClass}">
+            <td>${p.time}</td>
+            <td class="ip-cell ${srcClass}" onclick="highlightIP('${p.src_ip}')" title="Click to highlight this IP">${p.src_ip}</td>
+            <td class="ip-cell ${dstClass}" onclick="highlightIP('${p.dst_ip}')" title="Click to highlight this IP">${p.dst_ip}</td>
+            <td><span class="proto-badge proto-${p.protocol}">${p.protocol}</span></td>
+            <td>${p.size}B</td><td>${p.src_port||'—'}</td><td>${p.dst_port||'—'}</td>
+            <td><span class="service-badge">${p.service}</span></td>
+        </tr>`;
+    }).join('');
+}
+
+function highlightIP(ip) {
+    if (highlightedIP === ip) {
+        highlightedIP = null;
+        addLog('IP highlight cleared', 'info');
+    } else {
+        highlightedIP = ip;
+        addLog('Highlighting IP: ' + ip, 'info');
+    }
+    renderTableRespectingFilter();
+}
+
+function applyFilter(silent) {
+    // Save current input values into activeFilters
+    activeFilters.proto = document.getElementById('filter-protocol').value;
+    activeFilters.src   = document.getElementById('filter-src').value.trim();
+    activeFilters.dst   = document.getElementById('filter-dst').value.trim();
+    activeFilters.svc   = document.getElementById('filter-service').value;
+    renderTableRespectingFilter();
+    const any = activeFilters.proto||activeFilters.src||activeFilters.dst||activeFilters.svc;
+    if(!silent && any) {
+        const count = document.getElementById('packet-count').textContent;
+        addLog(`Filter applied → ${count}`,'info');
+    }
+}
+
+function resetFilter() {
+    ['filter-protocol','filter-service'].forEach(id=>document.getElementById(id).value='');
+    ['filter-src','filter-dst'].forEach(id=>document.getElementById(id).value='');
+    activeFilters = { proto: '', src: '', dst: '', svc: '' };
+    highlightedIP = null;
+    renderTable(allPackets);
+    addLog('Filters cleared','warn');
+}
+
+function addLog(msg, type='') {
+    const log=document.getElementById('log-box');
+    const t=new Date().toLocaleTimeString('en-GB',{hour12:false});
+    const el=document.createElement('div');
+    el.className='log-entry';
+    el.innerHTML=`<span class="log-time">${t}</span><span class="log-msg ${type}">${msg}</span>`;
+    log.prepend(el);
+    if(log.children.length>80) log.removeChild(log.lastChild);
+    // Auto scroll to top (newest entry)
+    log.scrollTop = 0;
+}
+
+function exportCSV() {
+    if (!allPackets.length) { addLog('No data to export','warn'); return; }
+    const headers = ['Time','Source IP','Destination IP','Protocol','Size (B)','Src Port','Dst Port','Service'];
+    const rows = allPackets.map(p => [p.time, p.src_ip, p.dst_ip, p.protocol, p.size, p.src_port||'', p.dst_port||'', p.service]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `packet_capture_${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addLog(`Exported ${allPackets.length} packets to CSV`, 'info');
+}
+</script>
+</body>
+</html>
