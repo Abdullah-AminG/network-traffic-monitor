@@ -33,7 +33,6 @@ def process_packet(packet):
     dst_port = 0
     service = "Unknown"
 
-    # IP protocol number use karo — Windows par 100% reliable
     ip_proto = packet[IP].proto
 
     if ip_proto == 1:  # ICMP
@@ -72,7 +71,6 @@ def process_packet(packet):
     packets_list.append(pkt_data)
 
 def start_sniffing():
-    # conf.iface = automatically sahi interface select karta hai har PC par
     sniff(prn=process_packet, store=False,
           iface=conf.iface,
           stop_filter=lambda x: not is_monitoring)
