@@ -1,4 +1,4 @@
-# 🌐 Netshield Analytic — Network Traffic Monitor
+# 🌐 NetShield Analytic — Network Traffic Monitor
 
 Real-time network traffic monitoring platform built with Python + Flask + Scapy.
 
